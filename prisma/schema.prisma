@@ -1,0 +1,98 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id             String          @id @default(cuid())
+  username       String          @unique
+  password       String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  tasks          Task[]
+  senderMachines SenderMachine[]
+}
+
+model SenderMachine {
+  id         String   @id @default(cuid())
+  name       String   // e.g. "SIM 1"
+  apiToken   String
+  deviceIden String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  adminId    String?
+  admin      Admin?   @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  taskMachines TaskMachine[]
+  logs       TaskExecutionLog[]
+
+  @@index([adminId])
+}
+
+model Task {
+  id          String   @id @default(cuid())
+  name        String
+  status      String   // draft | scheduled | running | completed | failed
+  scheduledAt DateTime?
+  message     String
+  createdAt   DateTime @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+  adminId     String
+  admin       Admin    @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  contacts    Contact[]
+  logs        TaskExecutionLog[]
+  taskMachines TaskMachine[]
+
+  @@index([status])
+  @@index([scheduledAt])
+  @@index([adminId])
+}
+
+model TaskMachine {
+  id        String @id @default(cuid())
+  taskId    String
+  task      Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  machineId String
+  machine   SenderMachine @relation(fields: [machineId], references: [id], onDelete: Cascade)
+  @@unique([taskId, machineId])
+  @@index([taskId])
+  @@index([machineId])
+}
+
+model Contact {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  phone     String   // E.164 format
+  name      String?
+  logs      TaskExecutionLog[]
+
+  @@index([taskId])
+}
+
+model TaskExecutionLog {
+  id           String   @id @default(cuid())
+  taskId       String
+  task         Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  contactId    String
+  contact      Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  machineId    String?
+  machine      SenderMachine? @relation(fields: [machineId], references: [id], onDelete: SetNull)
+  status       String   // pending | success | failed
+  errorMessage String?
+  retryCount   Int      @default(0)
+  sentAt       DateTime?
+  createdAt    DateTime @default(now())
+
+  @@index([taskId])
+  @@index([contactId])
+  @@index([machineId])
+}
