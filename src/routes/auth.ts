@@ -1,7 +1,9 @@
 import express, { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
+import { Prisma } from '@prisma/client';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { renderLoginPage, renderLayout } from '../views/layout';
+import { COMPANY_OPTIONS } from '../constants/companies';
 
 const router = express.Router();
 
@@ -10,7 +12,7 @@ router.get('/login', (req: Request, res: Response) => {
   const error = req.query.error as string | undefined;
   const registerError = req.query.registerError as string | undefined;
   const registerSuccess = req.query.registerSuccess === 'true';
-  res.send(renderLoginPage(error, registerError, registerSuccess));
+  res.send(renderLoginPage(error, registerError, registerSuccess, COMPANY_OPTIONS));
 });
 
 // Login handler
@@ -25,6 +27,7 @@ router.post('/login', async (req: Request, res: Response) => {
     const prisma = req.app.locals.prisma;
     const admin = await prisma.admin.findUnique({
       where: { username },
+      select: { id: true, password: true, companyId: true },
     });
 
     if (!admin) {
@@ -41,6 +44,7 @@ router.post('/login', async (req: Request, res: Response) => {
 
     // Set adminId in session
     req.session.adminId = admin.id;
+    req.session.companyId = admin.companyId;
 
     // Set signed cookie with adminId so auth works even if session store is lost (e.g. restart, multi-instance)
     const cookieOpts = {
@@ -75,9 +79,9 @@ router.post('/login', async (req: Request, res: Response) => {
 
 // Register handler
 router.post('/register', async (req: Request, res: Response) => {
-  const { username, password, confirmPassword } = req.body;
+  const { username, password, confirmPassword, companyCode } = req.body;
 
-  if (!username || !password || !confirmPassword) {
+  if (!username || !password || !confirmPassword || !companyCode) {
     return res.redirect('/auth/login?registerError=missing-fields');
   }
 
@@ -87,6 +91,14 @@ router.post('/register', async (req: Request, res: Response) => {
 
   try {
     const prisma = req.app.locals.prisma;
+    const company = await prisma.company.findUnique({
+      where: { code: companyCode },
+      select: { id: true },
+    });
+
+    if (!company) {
+      return res.redirect('/auth/login?registerError=invalid-company');
+    }
     
     // Check if username already exists
     const existing = await prisma.admin.findUnique({
@@ -97,6 +109,15 @@ router.post('/register', async (req: Request, res: Response) => {
       return res.redirect('/auth/login?registerError=username-exists');
     }
 
+    const existingCompanyAdmin = await prisma.admin.findUnique({
+      where: { companyId: company.id },
+      select: { id: true },
+    });
+
+    if (existingCompanyAdmin) {
+      return res.redirect('/auth/login?registerError=company-exists');
+    }
+
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -105,11 +126,18 @@ router.post('/register', async (req: Request, res: Response) => {
       data: {
         username,
         password: hashedPassword,
+        companyId: company.id,
       },
     });
 
     res.redirect('/auth/login?registerSuccess=true');
   } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    ) {
+      return res.redirect('/auth/login?registerError=company-exists');
+    }
     console.error('Registration error:', error);
     res.redirect('/auth/login?registerError=server-error');
   }

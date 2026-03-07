@@ -11,14 +11,25 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Company {
+  id             String          @id
+  code           String          @unique
+  name           String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  admins         Admin[]
+  senderMachines SenderMachine[]
+}
+
 model Admin {
   id             String          @id @default(cuid())
   username       String          @unique
   password       String
+  companyId      String          @unique
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   tasks          Task[]
-  senderMachines SenderMachine[]
 }
 
 model SenderMachine {
@@ -28,12 +39,13 @@ model SenderMachine {
   deviceIden String
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
-  adminId    String?
-  admin      Admin?   @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Restrict)
   taskMachines TaskMachine[]
   logs       TaskExecutionLog[]
 
-  @@index([adminId])
+  @@index([companyId])
+  @@unique([companyId, name])
 }
 
 model Task {

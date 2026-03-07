@@ -13,6 +13,24 @@ const router = express.Router()
 // 🔐 auth
 router.use(requireAuth)
 
+async function getCurrentCompanyId(req: AuthRequest): Promise<string | null> {
+  const sessionCompanyId = req.session?.companyId
+  if (sessionCompanyId) return sessionCompanyId
+
+  const adminId = req.session?.adminId
+  if (!adminId) return null
+
+  const prisma = req.app.locals.prisma
+  const admin = await prisma.admin.findUnique({
+    where: { id: adminId },
+    select: { companyId: true },
+  })
+  if (!admin) return null
+
+  req.session.companyId = admin.companyId
+  return admin.companyId
+}
+
 // ================= Task list =================
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
@@ -89,7 +107,12 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 // ================= Create page =================
 router.get('/create', async (req: AuthRequest, res: Response) => {
   const prisma = req.app.locals.prisma
+  const companyId = await getCurrentCompanyId(req)
+  if (!companyId) {
+    return res.status(401).send('Unauthorized')
+  }
   const list = await prisma.senderMachine.findMany({
+    where: { companyId },
     orderBy: { name: 'asc' },
     select: { id: true, name: true },
   })
@@ -106,6 +129,10 @@ router.get('/create', async (req: AuthRequest, res: Response) => {
 router.post('/', async (req: AuthRequest, res: Response) => {
   const adminId = req.session?.adminId
   if (!adminId) {
+    return res.status(401).send('Unauthorized')
+  }
+  const companyId = await getCurrentCompanyId(req)
+  if (!companyId) {
     return res.status(401).send('Unauthorized')
   }
 
@@ -145,7 +172,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 
     // Validate machine IDs exist
     const machines = await prisma.senderMachine.findMany({
-      where: { id: { in: machineIds } },
+      where: { id: { in: machineIds }, companyId },
       select: { id: true },
     })
     if (machines.length !== machineIds.length) {

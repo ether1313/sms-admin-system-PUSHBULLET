@@ -51,10 +51,25 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const model = tableParam as (typeof ALLOWED_MODELS)[number]
     const skip = (page - 1) * limit
 
-    // Restrict each table to rows belonging to the current admin (senderMachine is shared by all admins)
+    const sessionCompanyId = req.session?.companyId
+    let companyId = sessionCompanyId
+    if (!companyId) {
+      const admin = await prisma.admin.findUnique({
+        where: { id: adminId },
+        select: { companyId: true },
+      })
+      if (!admin) {
+        res.status(403).send('Forbidden: invalid admin')
+        return
+      }
+      companyId = admin.companyId
+      req.session.companyId = companyId
+    }
+
+    // Restrict each table to rows belonging to the current admin/company.
     const whereByModel: Record<string, object> = {
       admin: { id: adminId },
-      senderMachine: {},
+      senderMachine: { companyId },
       task: { adminId },
       taskExecutionLog: { task: { adminId } },
     }

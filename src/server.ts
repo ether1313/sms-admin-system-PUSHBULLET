@@ -37,12 +37,18 @@ app.use(
 
 // Restore session.adminId from signed cookie if session lost (e.g. restart, multi-instance)
 app.use(async (req, _res, next) => {
-  if (req.session?.adminId) return next()
+  if (req.session?.adminId && req.session?.companyId) return next()
   const adminId = req.signedCookies?.adminId
   if (typeof adminId !== 'string') return next()
   try {
-    const admin = await prisma.admin.findUnique({ where: { id: adminId }, select: { id: true } })
-    if (admin) req.session.adminId = admin.id
+    const admin = await prisma.admin.findUnique({
+      where: { id: adminId },
+      select: { id: true, companyId: true },
+    })
+    if (admin) {
+      req.session.adminId = admin.id
+      req.session.companyId = admin.companyId
+    }
   } catch (_e) {}
   next()
 })
