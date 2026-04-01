@@ -154,10 +154,15 @@ export function renderTaskList(
             <p class="text-xs text-slate-500">Created</p>
             <p class="font-semibold text-slate-900">${formatDate(task.createdAt)}</p>
           </div>
-          <div class="flex items-end">
-            <a href="/tasks/${task.id}" class="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:from-violet-600 hover:to-indigo-700">
-              View <span aria-hidden="true">→</span>
+          <div class="col-span-2 grid grid-cols-3 gap-2">
+            <a href="/tasks/${task.id}" class="inline-flex items-center justify-center gap-1 rounded-xl bg-gradient-to-r from-violet-500 to-indigo-600 px-2 py-2 text-xs font-semibold text-white shadow-sm transition-all duration-200 hover:from-violet-600 hover:to-indigo-700">
+              View
             </a>
+            <form method="POST" action="/tasks/${task.id}/delete" onsubmit="return confirm('Delete this task? This will stop sending immediately and cannot be undone.');">
+              <button type="submit" class="w-full inline-flex items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-2 py-2 text-xs font-semibold text-rose-700 transition-colors hover:bg-rose-100">
+                Delete
+              </button>
+            </form>
           </div>
         </div>
       </div>
@@ -232,9 +237,14 @@ export function renderTaskList(
               ${formatDate(task.createdAt)}
             </td>
             <td class="px-4 lg:px-6 py-4 whitespace-nowrap text-sm">
+              <div class="flex items-center gap-2">
               <a href="/tasks/${task.id}" class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-900">
                 View <span aria-hidden="true">→</span>
               </a>
+              <form method="POST" action="/tasks/${task.id}/delete" onsubmit="return confirm('Delete this task? This will stop sending immediately and cannot be undone.');">
+                <button type="submit" class="inline-flex items-center rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-100">Delete</button>
+              </form>
+              </div>
             </td>
           </tr>
           `).join('')}
@@ -246,7 +256,15 @@ export function renderTaskList(
   return renderLayout('Tasks', content);
 }
 
-export function renderTaskCreate(machines: { id: string; name: string }[] = []): string {
+export function renderTaskCreate(
+  machines: { id: string; name: string; isValid: boolean }[] = [],
+  createError?: string
+): string {
+  const hasAnyValidMachine = machines.some((m) => m.isValid)
+  const createErrorMessage =
+    createError === 'select-valid-machine'
+      ? 'Please select at least one valid sender machine (apiToken/deviceIden required) before creating the task.'
+      : ''
   const machinesSection =
     machines.length > 0
       ? `
@@ -255,15 +273,33 @@ export function renderTaskCreate(machines: { id: string; name: string }[] = []):
                 Sender machines <span class="text-rose-600">*</span>
               </span>
               <p class="mt-1 mb-2 text-sm text-slate-600">
-                Select one or more machines to share the send. Contacts are split across selected machines.
+                Select at least one valid machine. Contacts are split across selected machines.
               </p>
+              ${
+                hasAnyValidMachine
+                  ? ''
+                  : `
+              <div class="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                No valid sender machine is available. Configure apiToken and deviceIden on at least one machine first.
+              </div>
+              `
+              }
               <div class="mt-2 flex flex-wrap gap-4">
                 ${machines
                   .map(
                     (m) => `
-                <label class="inline-flex items-center gap-2 cursor-pointer rounded-lg px-3 py-2 transition-colors hover:bg-slate-50">
-                  <input type="checkbox" name="machineIds" value="${m.id.replace(/"/g, '&quot;')}" class="rounded border-slate-300 text-violet-600 focus:ring-violet-500" />
-                  <span class="text-sm font-medium text-slate-800">${escapeHtml(m.name)}</span>
+                <label class="inline-flex items-center gap-2 rounded-lg px-3 py-2 transition-colors ${
+                  m.isValid ? 'cursor-pointer hover:bg-slate-50' : 'cursor-not-allowed opacity-60'
+                }">
+                  <input type="checkbox" name="machineIds" value="${m.id.replace(
+                    /"/g,
+                    '&quot;'
+                  )}" data-valid="${m.isValid ? 'true' : 'false'}" ${
+                      m.isValid ? '' : 'disabled'
+                    } class="rounded border-slate-300 text-violet-600 focus:ring-violet-500" />
+                  <span class="text-sm font-medium text-slate-800">${escapeHtml(m.name)}${
+                      m.isValid ? '' : ' (missing apiToken/deviceIden)'
+                    }</span>
                 </label>`
                   )
                   .join('')}
@@ -279,6 +315,15 @@ export function renderTaskCreate(machines: { id: string; name: string }[] = []):
       <h1 class="mt-3 text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Create Task</h1>
       <p class="mt-1.5 text-sm text-slate-500">Send to many contacts with a scheduled start time.</p>
     </div>
+    ${
+      createErrorMessage
+        ? `
+    <div class="auto-hide-message mb-4 rounded-xl p-3 bg-rose-50/80 border border-rose-200/80 text-rose-800 text-sm transition-opacity duration-300">
+      ${createErrorMessage}
+    </div>
+    `
+        : ''
+    }
     <div class="grid gap-6 lg:grid-cols-3">
       <div class="lg:col-span-2 rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-6 shadow-sm">
         <form method="POST" action="/tasks" class="space-y-6">
@@ -299,7 +344,7 @@ export function renderTaskCreate(machines: { id: string; name: string }[] = []):
 
             <div class="sm:col-span-2">
               <label for="message" class="block text-sm font-medium text-slate-700">
-                Message Template <span class="text-rose-500">*</span>
+                Primary Message Template <span class="text-rose-500">*</span>
               </label>
               <textarea
                 id="message"
@@ -310,23 +355,62 @@ export function renderTaskCreate(machines: { id: string; name: string }[] = []):
                 placeholder="Hello {name}, this is your message..."
               ></textarea>
               <p class="mt-2 text-sm text-slate-500">
-                Tip: use <span class="font-mono text-slate-800">{name}</span> to insert the contact name.
+                Used for everyone by default. Tip: use <span class="font-mono text-slate-800">{name}</span> to insert the contact name.
               </p>
             </div>
 
             <div class="sm:col-span-2">
+              <div class="flex items-center justify-between gap-3">
+                <label class="block text-sm font-medium text-slate-700">
+                  Message Variants <span class="text-slate-400">(optional)</span>
+                </label>
+                <button
+                  type="button"
+                  id="addMessageVariantBtn"
+                  class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 hover:text-slate-900"
+                >
+                  + Add Variant
+                </button>
+              </div>
+              <p class="mt-2 text-sm text-slate-500">
+                Add alternatives to reduce identical wording. Each contact will randomly receive one template from the full set.
+              </p>
+              <div id="messageVariantsContainer" class="mt-3 space-y-3"></div>
+              <template id="messageVariantTemplate">
+                <div class="rounded-xl border border-slate-200/80 bg-slate-50/50 p-3.5 message-variant-item">
+                  <div class="mb-2 flex items-center justify-between gap-3">
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 message-variant-label">Variant</p>
+                    <button
+                      type="button"
+                      class="remove-variant-btn inline-flex items-center justify-center rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-rose-50 hover:text-rose-700"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <textarea
+                    name="messageVariants"
+                    rows="3"
+                    class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500/20"
+                    placeholder="Alternative wording, e.g. Hi {name}, quick update for you..."
+                  ></textarea>
+                </div>
+              </template>
+            </div>
+
+            <div class="sm:col-span-2">
               <label for="scheduledAt" class="block text-sm font-medium text-slate-700 mb-2">
-                Scheduled At <span class="text-slate-400">(optional)</span>
+                Scheduled At <span class="text-rose-500">*</span>
               </label>
               <input
                 type="datetime-local"
                 id="scheduledAt"
                 name="scheduledAt"
+                required
                 class="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 sm:px-3.5 sm:py-2.5 text-base sm:text-sm text-slate-900 transition-colors focus:border-violet-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/20 min-h-[48px] sm:min-h-0"
                 style="font-size: 16px; -webkit-appearance: none; appearance: none; touch-action: manipulation;"
               />
               <p class="mt-2 text-sm text-slate-500">
-                Leave empty to schedule now (executes automatically).
+                Selects the time to start sending the messages.
               </p>
             </div>
             ${machinesSection}
@@ -340,10 +424,10 @@ export function renderTaskCreate(machines: { id: string; name: string }[] = []):
                 required
                 rows="10"
                 class="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 font-mono text-sm text-slate-900 placeholder-slate-400 transition-colors focus:border-violet-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/20"
-                placeholder="+61412345678&#10;+61412345679 John Doe&#10"
+                placeholder="+61412345678&#10;+60123456789 John Doe&#10"
               ></textarea>
               <p class="mt-2 text-sm text-slate-500">
-                One per line. Format: <span class="font-mono text-slate-800">phone</span> or <span class="font-mono text-slate-800">phone name</span>. Numbers normalize to <span class="font-mono text-slate-800">+61</span>.
+                One per line. Format: <span class="font-mono text-slate-800">phone</span> or <span class="font-mono text-slate-800">phone name</span>. Use international format with <span class="font-mono text-slate-800">+</span> (e.g. <span class="font-mono text-slate-800">+61412345678</span>), or digits only if the country code is already included (e.g. <span class="font-mono text-slate-800">61412345678</span>, <span class="font-mono text-slate-800">60123456789</span>).
               </p>
             </div>
           </div>
@@ -370,11 +454,63 @@ export function renderTaskCreate(machines: { id: string; name: string }[] = []):
         <ul class="mt-3 space-y-3 text-sm text-slate-600">
           <li><span class="font-medium text-slate-800">Machines:</span> select one or more; contacts are split across them.</li>
           <li><span class="font-medium text-slate-800">Contacts:</span> paste multiple lines, one contact per line.</li>
+          <li><span class="font-medium text-slate-800">Variants:</span> optional alternatives; each contact gets one template randomly.</li>
           <li><span class="font-medium text-slate-800">Names:</span> optional, used by <span class="font-mono text-slate-800">{name}</span>.</li>
-          <li><span class="font-medium text-slate-800">Schedule:</span> blank = run now; set a time to run later.</li>
+          <li><span class="font-medium text-slate-800">Schedule:</span> required; select a date &amp; time to start sending.</li>
         </ul>
       </div>
     </div>
+    <script>
+      (() => {
+        const addBtn = document.getElementById('addMessageVariantBtn');
+        const container = document.getElementById('messageVariantsContainer');
+        const template = document.getElementById('messageVariantTemplate');
+        if (!addBtn || !container || !template) return;
+
+        function refreshLabels() {
+          const items = container.querySelectorAll('.message-variant-item');
+          items.forEach((item, index) => {
+            const label = item.querySelector('.message-variant-label');
+            if (label) label.textContent = 'Variant ' + (index + 1);
+          });
+        }
+
+        function addVariant() {
+          if (!(template instanceof HTMLTemplateElement)) return;
+          const fragment = template.content.cloneNode(true);
+          const row = fragment.querySelector('.message-variant-item');
+          const removeBtn = fragment.querySelector('.remove-variant-btn');
+          if (removeBtn) {
+            removeBtn.addEventListener('click', () => {
+              if (row) row.remove();
+              refreshLabels();
+            });
+          }
+          container.appendChild(fragment);
+          refreshLabels();
+        }
+
+        const createForm = document.querySelector('form[action="/tasks"]');
+        addBtn.addEventListener('click', addVariant);
+        addVariant();
+
+        if (createForm) {
+          createForm.addEventListener('submit', (event) => {
+            const machineInputs = Array.from(createForm.querySelectorAll('input[name="machineIds"]'));
+            const checkedValidCount = machineInputs.filter(
+              (input) =>
+                input instanceof HTMLInputElement &&
+                input.checked &&
+                input.dataset.valid === 'true'
+            ).length;
+            if (checkedValidCount === 0) {
+              event.preventDefault();
+              alert('Please select at least one valid sender machine before creating the task.');
+            }
+          });
+        }
+      })();
+    </script>
   `;
   return renderLayout('Create Task', content);
 }
@@ -389,6 +525,11 @@ export function renderTaskDetail(task: TaskWithDetails): string {
   };
 
   const canTrigger = task.status === 'draft' || task.status === 'scheduled';
+  const taskMessageTemplatesRaw = ((task as unknown as { messageTemplates?: string[] }).messageTemplates) || [];
+  const taskMessageTemplates = taskMessageTemplatesRaw
+    .map((t) => (typeof t === 'string' ? t.trim() : ''))
+    .filter((t) => t.length > 0);
+  const templatesToShow = taskMessageTemplates.length > 0 ? taskMessageTemplates : [task.message];
 
   // Calculate execution stats
   const totalLogs = task.logs.length;
@@ -411,16 +552,23 @@ export function renderTaskDetail(task: TaskWithDetails): string {
             ${task.status}
           </span>
         </div>
-        ${canTrigger ? `
-        <form method="POST" action="/tasks/${task.id}/trigger" class="inline sm:ml-4">
-          <button
-            type="submit"
-            class="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-emerald-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
-          >
-            Trigger Execution
-          </button>
-        </form>
-        ` : ''}
+        <div class="flex flex-wrap items-center gap-2 sm:ml-4">
+          <form method="POST" action="/tasks/${task.id}/delete" class="inline" onsubmit="return confirm('Delete this task? This will stop sending immediately and cannot be undone.');">
+            <button type="submit" class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 transition-colors hover:bg-rose-100">
+              Delete
+            </button>
+          </form>
+          ${canTrigger ? `
+          <form method="POST" action="/tasks/${task.id}/trigger" class="inline">
+            <button
+              type="submit"
+              class="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-emerald-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2"
+            >
+              Trigger Execution
+            </button>
+          </form>
+          ` : ''}
+        </div>
       </div>
 
       <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -449,9 +597,26 @@ export function renderTaskDetail(task: TaskWithDetails): string {
       </div>
 
       <div class="mt-6">
-        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Message Template</p>
-        <div class="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
-          <pre class="whitespace-pre-wrap text-sm text-slate-900">${escapeHtml(task.message)}</pre>
+        <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Message Templates</p>
+          <span class="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
+            ${templatesToShow.length} variant${templatesToShow.length === 1 ? '' : 's'}
+          </span>
+        </div>
+        <p class="mb-3 text-sm text-slate-500">
+          Each contact gets one variant randomly.
+        </p>
+        <div class="space-y-3">
+          ${templatesToShow
+            .map(
+              (template, idx) => `
+            <div class="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4">
+              <p class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Template ${idx + 1}</p>
+              <pre class="whitespace-pre-wrap text-sm text-slate-900">${escapeHtml(template)}</pre>
+            </div>
+          `
+            )
+            .join('')}
         </div>
       </div>
 

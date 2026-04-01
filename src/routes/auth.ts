@@ -3,7 +3,7 @@ import bcrypt from 'bcrypt';
 import { Prisma } from '@prisma/client';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { renderLoginPage, renderLayout } from '../views/layout';
-import { COMPANY_OPTIONS } from '../constants/companies';
+import { normalizeCompanyName, createCompanyWithAdmin } from '../utils/companyRegistration';
 
 const router = express.Router();
 
@@ -12,7 +12,7 @@ router.get('/login', (req: Request, res: Response) => {
   const error = req.query.error as string | undefined;
   const registerError = req.query.registerError as string | undefined;
   const registerSuccess = req.query.registerSuccess === 'true';
-  res.send(renderLoginPage(error, registerError, registerSuccess, COMPANY_OPTIONS));
+  res.send(renderLoginPage(error, registerError, registerSuccess));
 });
 
 // Login handler
@@ -79,9 +79,9 @@ router.post('/login', async (req: Request, res: Response) => {
 
 // Register handler
 router.post('/register', async (req: Request, res: Response) => {
-  const { username, password, confirmPassword, companyCode } = req.body;
+  const { username, password, confirmPassword, companyName: rawCompanyName } = req.body;
 
-  if (!username || !password || !confirmPassword || !companyCode) {
+  if (!username || !password || !confirmPassword || !rawCompanyName) {
     return res.redirect('/auth/login?registerError=missing-fields');
   }
 
@@ -89,46 +89,39 @@ router.post('/register', async (req: Request, res: Response) => {
     return res.redirect('/auth/login?registerError=password-mismatch');
   }
 
+  const companyName = normalizeCompanyName(rawCompanyName);
+  if (!companyName) {
+    return res.redirect('/auth/login?registerError=invalid-company-name');
+  }
+
   try {
     const prisma = req.app.locals.prisma;
-    const company = await prisma.company.findUnique({
-      where: { code: companyCode },
-      select: { id: true },
-    });
 
-    if (!company) {
-      return res.redirect('/auth/login?registerError=invalid-company');
-    }
-    
-    // Check if username already exists
-    const existing = await prisma.admin.findUnique({
-      where: { username },
-    });
-
-    if (existing) {
+    const existingUser = await prisma.admin.findUnique({ where: { username } });
+    if (existingUser) {
       return res.redirect('/auth/login?registerError=username-exists');
     }
 
-    const existingCompanyAdmin = await prisma.admin.findUnique({
-      where: { companyId: company.id },
-      select: { id: true },
-    });
-
-    if (existingCompanyAdmin) {
-      return res.redirect('/auth/login?registerError=company-exists');
-    }
-
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create admin
-    await prisma.admin.create({
-      data: {
-        username,
-        password: hashedPassword,
-        companyId: company.id,
-      },
+    // Case-insensitive lookup for existing company
+    const existingCompany = await prisma.company.findFirst({
+      where: { name: { equals: companyName, mode: 'insensitive' } },
+      select: { id: true, admins: { select: { id: true }, take: 1 } },
     });
+
+    if (existingCompany) {
+      if (existingCompany.admins.length > 0) {
+        return res.redirect('/auth/login?registerError=company-exists');
+      }
+      // Claim the existing company that has no admin yet
+      await prisma.admin.create({
+        data: { username, password: hashedPassword, companyId: existingCompany.id },
+      });
+    } else {
+      // Brand-new company → create Company + SIM 1-10 + Admin
+      await createCompanyWithAdmin(prisma, companyName, username, hashedPassword);
+    }
 
     res.redirect('/auth/login?registerSuccess=true');
   } catch (error) {

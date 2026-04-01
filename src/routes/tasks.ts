@@ -13,6 +13,18 @@ const router = express.Router()
 // 🔐 auth
 router.use(requireAuth)
 
+function parseUniqueTemplates(primaryMessage: string, messageVariantsRaw: unknown): string[] {
+  const messageVariantsList = Array.isArray(messageVariantsRaw)
+    ? messageVariantsRaw
+    : typeof messageVariantsRaw === 'string'
+    ? [messageVariantsRaw]
+    : []
+  const normalizedTemplates = [primaryMessage, ...messageVariantsList]
+    .map((t) => (typeof t === 'string' ? t.trim() : ''))
+    .filter((t) => t.length > 0)
+  return Array.from(new Set(normalizedTemplates))
+}
+
 async function getCurrentCompanyId(req: AuthRequest): Promise<string | null> {
   const sessionCompanyId = req.session?.companyId
   if (sessionCompanyId) return sessionCompanyId
@@ -111,10 +123,11 @@ router.get('/create', async (req: AuthRequest, res: Response) => {
   if (!companyId) {
     return res.status(401).send('Unauthorized')
   }
+  const createError = typeof req.query.error === 'string' ? req.query.error : undefined
   const list = await prisma.senderMachine.findMany({
     where: { companyId },
     orderBy: { name: 'asc' },
-    select: { id: true, name: true },
+    select: { id: true, name: true, apiToken: true, deviceIden: true },
   })
   // Sort by number in name so SIM 1, SIM 2, ..., SIM 10 (not SIM 1, SIM 10, SIM 2)
   const machines = [...list].sort((a, b) => {
@@ -122,7 +135,16 @@ router.get('/create', async (req: AuthRequest, res: Response) => {
     const numB = parseInt(b.name.replace(/\D/g, ''), 10) || 0
     return numA - numB
   })
-  res.send(renderTaskCreate(machines))
+  res.send(
+    renderTaskCreate(
+      machines.map((m) => ({
+        id: m.id,
+        name: m.name,
+        isValid: Boolean(m.apiToken?.trim() && m.deviceIden?.trim()),
+      })),
+      createError
+    )
+  )
 })
 
 // ================= Create handler =================
@@ -137,8 +159,9 @@ router.post('/', async (req: AuthRequest, res: Response) => {
   }
 
   const prisma = req.app.locals.prisma
-  const name = req.body.name
-  const message = req.body.message
+  const name = typeof req.body.name === 'string' ? req.body.name.trim() : ''
+  const message = typeof req.body.message === 'string' ? req.body.message.trim() : ''
+  const messageVariantsRaw = req.body.messageVariants
   const scheduledAt = req.body.scheduledAt
 
   // machineIds: array from form (machineIds[] or single machineIds)
@@ -150,7 +173,7 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     : []
 
   if (machineIds.length === 0) {
-    return res.status(400).send('Select at least one sender machine')
+    return res.redirect('/tasks/create?error=select-valid-machine')
   }
 
   // ✅ 兼容不同 textarea name
@@ -159,33 +182,43 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     req.body.contactsText ||
     req.body.contacts_input
 
-  if (!name || !message || !contactsRaw) {
+  if (!name || !message || !contactsRaw || !scheduledAt) {
     return res.status(400).send('Missing required fields')
   }
 
   try {
     const parsedContacts = parseContacts(contactsRaw)
+    const uniqueTemplates = parseUniqueTemplates(message, messageVariantsRaw)
 
     if (parsedContacts.length === 0) {
       return res.status(400).send('No valid contacts provided')
+    }
+    if (uniqueTemplates.length === 0) {
+      return res.status(400).send('At least one message template is required')
     }
 
     // Validate machine IDs exist
     const machines = await prisma.senderMachine.findMany({
       where: { id: { in: machineIds }, companyId },
-      select: { id: true },
+      select: { id: true, apiToken: true, deviceIden: true },
     })
     if (machines.length !== machineIds.length) {
-      return res.status(400).send('Invalid sender machine selected')
+      return res.redirect('/tasks/create?error=select-valid-machine')
+    }
+    const validMachines = machines.filter(
+      (m: { apiToken: string; deviceIden: string }) => m.apiToken.trim() && m.deviceIden.trim()
+    )
+    if (validMachines.length === 0) {
+      return res.redirect('/tasks/create?error=select-valid-machine')
     }
 
-    // If no time selected, schedule immediately (now).
-    const scheduledDate = scheduledAt ? new Date(scheduledAt) : new Date()
+    const scheduledDate = new Date(scheduledAt)
 
     const task = await prisma.task.create({
       data: {
         name,
         message,
+        messageTemplates: uniqueTemplates,
         status: 'scheduled',
         scheduledAt: scheduledDate,
         adminId,
@@ -218,6 +251,21 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     console.error(error)
     res.status(500).send('Error creating task')
   }
+})
+
+// ================= Delete handler =================
+router.post('/:id/delete', async (req: AuthRequest, res: Response) => {
+  const prisma = req.app.locals.prisma
+  const adminId = req.session?.adminId
+  if (!adminId) return res.status(401).send('Unauthorized')
+
+  const task = await prisma.task.findUnique({ where: { id: req.params.id } })
+  if (!task) return res.status(404).send('Task not found')
+  if (task.adminId !== adminId) return res.status(403).send('Forbidden: This task belongs to another admin')
+
+  executionEngine.cancelTask(task.id)
+  await prisma.task.delete({ where: { id: task.id } })
+  res.redirect('/tasks')
 })
 
 // ================= Task detail =================

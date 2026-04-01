@@ -1,0 +1,3 @@
+-- Legacy placeholder migration kept for compatibility.
+-- Real template-column migration is in:
+-- 20260308120000_add_message_templates

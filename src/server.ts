@@ -15,8 +15,8 @@ const prisma = new PrismaClient()
 app.set('trust proxy', true)
 
 // ================= Middleware =================
-app.use(express.urlencoded({ extended: true }))
-app.use(express.json())
+app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+app.use(express.json({ limit: '10mb' }))
 app.use(cookieParser(process.env.SESSION_SECRET || 'change-me-in-production'))
 
 app.use(

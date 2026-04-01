@@ -131,11 +131,36 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         machine: machine?.name ?? '-',
       }))
     } else {
-      const delegate = prisma[model] as any
-      const [rowsResult, totalCount] = await Promise.all([
-        delegate.findMany({ where, take: limit, skip, orderBy: { id: 'asc' as const } }).catch(() => []),
-        delegate.count({ where }).catch(() => 0),
-      ])
+      const orderBy = { id: 'asc' as const }
+      let rowsResult: Record<string, unknown>[] = []
+      let totalCount = 0
+      try {
+        switch (model) {
+          case 'admin':
+            ;[rowsResult, totalCount] = await Promise.all([
+              prisma.admin.findMany({ where, take: limit, skip, orderBy }),
+              prisma.admin.count({ where }),
+            ])
+            break
+          case 'senderMachine':
+            ;[rowsResult, totalCount] = await Promise.all([
+              prisma.senderMachine.findMany({ where, take: limit, skip, orderBy }),
+              prisma.senderMachine.count({ where }),
+            ])
+            break
+          case 'task':
+            ;[rowsResult, totalCount] = await Promise.all([
+              prisma.task.findMany({ where, take: limit, skip, orderBy }),
+              prisma.task.count({ where }),
+            ])
+            break
+          default:
+            break
+        }
+      } catch {
+        rowsResult = []
+        totalCount = 0
+      }
       rows = rowsResult
       total = totalCount
     }

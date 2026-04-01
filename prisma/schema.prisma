@@ -12,9 +12,9 @@ datasource db {
 }
 
 model Company {
-  id             String          @id
+  id             String          @id @default(cuid())
   code           String          @unique
-  name           String
+  name           String          @unique
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   admins         Admin[]
@@ -54,6 +54,7 @@ model Task {
   status      String   // draft | scheduled | running | completed | failed
   scheduledAt DateTime?
   message     String
+  messageTemplates String[] @default([])
   createdAt   DateTime @default(now())
   startedAt   DateTime?
   completedAt DateTime?

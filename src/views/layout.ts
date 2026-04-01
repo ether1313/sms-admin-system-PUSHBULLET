@@ -158,7 +158,6 @@ export function renderLoginPage(
   error?: string,
   registerError?: string,
   registerSuccess?: boolean,
-  companies: { code: string; name: string }[] = []
 ): string {
   const errorMessage = error === 'invalid-credentials' 
     ? 'Invalid username or password'
@@ -172,8 +171,8 @@ export function renderLoginPage(
     ? 'Username already exists'
     : registerError === 'company-exists'
     ? 'This company already has an account'
-    : registerError === 'invalid-company'
-    ? 'Please select a valid company'
+    : registerError === 'invalid-company-name'
+    ? 'Company name must be 2-120 characters'
     : registerError === 'missing-fields'
     ? 'Please fill in all fields'
     : registerError === 'password-mismatch'
@@ -181,9 +180,6 @@ export function renderLoginPage(
     : registerError === 'server-error'
     ? 'Registration failed. Please try again.'
     : '';
-  const companyOptionsHtml = companies
-    .map((company) => `<option value="${company.code}">${company.name}</option>`)
-    .join('');
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -293,16 +289,17 @@ export function renderLoginPage(
         </div>
         <form method="POST" action="/auth/register" onsubmit="return validatePasswordMatch(event)" class="space-y-5">
           <div>
-            <label for="reg_company_code" class="block text-sm font-medium text-slate-700 mb-1.5">Company *</label>
-            <select
-              id="reg_company_code"
-              name="companyCode"
+            <label for="reg_company_name" class="block text-sm font-medium text-slate-700 mb-1.5">Company *</label>
+            <input
+              type="text"
+              id="reg_company_name"
+              name="companyName"
               required
-              class="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-slate-900 transition-colors focus:border-violet-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/20"
-            >
-              <option value="" disabled selected>Select company</option>
-              ${companyOptionsHtml}
-            </select>
+              minlength="2"
+              maxlength="120"
+              class="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3.5 py-2.5 text-slate-900 placeholder-slate-400 transition-colors focus:border-violet-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/20"
+              placeholder="Enter your company name"
+            />
           </div>
           <div>
             <label for="reg_username" class="block text-sm font-medium text-slate-700 mb-1.5">Username *</label>

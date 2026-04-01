@@ -31,30 +31,33 @@ export function parseContacts(input: string): ParsedContact[] {
 }
 
 /**
- * Normalize phone number to E.164 format (+61...)
- * Accepts various formats and converts to +61
+ * Normalize phone number to E.164 for multi-country support.
+ * Accepted input examples:
+ * - +61412345678
+ * - 61412345678 (country code included without +, same as before for AU)
+ * - +60123456789 / 60123456789
+ * - 0060123456789 (converted to +60123456789)
  */
 export function normalizePhone(phone: string): string | null {
-  // Remove all non-digit characters except +
-  let cleaned = phone.replace(/[^\d+]/g, '');
+  const trimmed = phone.trim();
+  if (!trimmed) return null;
 
-  // Handle different formats
-  if (cleaned.startsWith('+61')) {
-    // Already in +61 format
-    if (cleaned.length === 13) {
-      return cleaned;
-    }
-  } else if (cleaned.startsWith('61') && cleaned.length === 11) {
-    // 61xxxxxxxxx format
-    return `+${cleaned}`;
-  } else if (cleaned.startsWith('0') && cleaned.length === 10) {
-    // 0xxxxxxxxx format
-    return `+61${cleaned.substring(1)}`;
-  } else if (!cleaned.startsWith('+') && cleaned.length === 9) {
-    // xxxxxxxxx format (no leading 0)
-    return `+61${cleaned}`;
+  // Keep only digits and plus, then normalize leading 00 to +
+  let cleaned = trimmed.replace(/[^\d+]/g, '');
+  if (cleaned.startsWith('00')) {
+    cleaned = `+${cleaned.slice(2)}`;
   }
 
-  // Invalid format
+  // E.164 strict form: "+" + country/national number, total digits 8..15
+  // Country code must not start with 0.
+  const e164 = /^\+[1-9]\d{7,14}$/;
+  if (e164.test(cleaned)) return cleaned;
+
+  // Bare international: digits only, already includes country code (no leading 0)
+  if (/^\d{8,15}$/.test(cleaned) && cleaned[0] !== '0') {
+    const withPlus = `+${cleaned}`;
+    if (e164.test(withPlus)) return withPlus;
+  }
+
   return null;
 }
