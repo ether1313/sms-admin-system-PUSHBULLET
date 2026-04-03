@@ -43,11 +43,12 @@ app.use(async (req, _res, next) => {
   try {
     const admin = await prisma.admin.findUnique({
       where: { id: adminId },
-      select: { id: true, companyId: true },
+      select: { id: true, companyId: true, role: true },
     })
     if (admin) {
       req.session.adminId = admin.id
       req.session.companyId = admin.companyId
+      req.session.role = admin.role
     }
   } catch (_e) {}
   next()
@@ -71,7 +72,7 @@ app.get('/health', (req, res) => {
 
 app.get('/', (req, res) => {
   if (req.session?.adminId) {
-    res.redirect('/tasks')
+    res.redirect(req.session.role === 'superadmin' ? '/db-viewer' : '/tasks')
   } else {
     res.redirect('/auth/login')
   }

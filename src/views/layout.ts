@@ -1,4 +1,11 @@
-export function renderLayout(title: string, content: string, showLogout = true): string {
+export function renderLayout(title: string, content: string, showLogout = true, isSuperAdmin = false): string {
+  const homeHref = isSuperAdmin ? '/db-viewer' : '/tasks'
+  const navLinks = isSuperAdmin
+    ? '<a href="/db-viewer" data-nav="/db-viewer" class="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">DB Viewer</a>'
+    : '<a href="/tasks" data-nav="/tasks" class="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">Tasks</a><a href="/db-viewer" data-nav="/db-viewer" class="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">DB Viewer</a>'
+  const mobileNavLinks = isSuperAdmin
+    ? '<a href="/db-viewer" data-nav="/db-viewer" class="flex items-center min-h-[44px] rounded-lg px-3 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900">DB Viewer</a>'
+    : '<a href="/tasks" data-nav="/tasks" class="flex items-center min-h-[44px] rounded-lg px-3 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900">Tasks</a><a href="/db-viewer" data-nav="/db-viewer" class="flex items-center min-h-[44px] rounded-lg px-3 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900">DB Viewer</a>'
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -33,9 +40,9 @@ export function renderLayout(title: string, content: string, showLogout = true):
   <nav class="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur-md shadow-sm" aria-label="Main">
     <div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
       <!-- Desktop: single row -->
-      <div class="hidden md:flex h-14 items-center justify-between">
+        <div class="hidden md:flex h-14 items-center justify-between">
         <div class="flex items-center gap-6 min-w-0">
-          <a href="/tasks" class="nav-logo flex shrink-0 items-center gap-2.5 font-semibold tracking-tight text-slate-900 transition-opacity hover:opacity-90" data-nav="/tasks" id="nav-logo">
+          <a href="${homeHref}" class="nav-logo flex shrink-0 items-center gap-2.5 font-semibold tracking-tight text-slate-900 transition-opacity hover:opacity-90" data-nav="${homeHref}" id="nav-logo">
             <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-sm">
               <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M12 3l8 4v5c0 5-3.5 9.4-8 10-4.5-.6-8-5-8-10V7l8-4z"></path>
@@ -47,8 +54,7 @@ export function renderLayout(title: string, content: string, showLogout = true):
           </a>
           <span class="h-4 w-px shrink-0 bg-slate-200" aria-hidden="true"></span>
           <div class="flex items-center gap-0.5">
-            <a href="/tasks" data-nav="/tasks" class="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">Tasks</a>
-            <a href="/db-viewer" data-nav="/db-viewer" class="rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900">DB Viewer</a>
+            ${navLinks}
           </div>
         </div>
         ${showLogout ? `
@@ -60,7 +66,7 @@ export function renderLayout(title: string, content: string, showLogout = true):
 
       <!-- Mobile: logo + hamburger -->
       <div class="flex md:hidden h-14 items-center justify-between gap-3">
-        <a href="/tasks" class="nav-logo flex shrink-0 items-center gap-2 font-semibold text-slate-900 min-w-0" data-nav="/tasks">
+        <a href="${homeHref}" class="nav-logo flex shrink-0 items-center gap-2 font-semibold text-slate-900 min-w-0" data-nav="${homeHref}">
           <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-sm">
             <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l8 4v5c0 5-3.5 9.4-8 10-4.5-.6-8-5-8-10V7l8-4z"/><path d="M9.5 12l1.8 1.8L14.8 10.3"/></svg>
             <span class="sr-only">Home</span>
@@ -77,8 +83,7 @@ export function renderLayout(title: string, content: string, showLogout = true):
     <!-- Mobile dropdown -->
     <div id="nav-menu" class="hidden md:hidden border-t border-slate-200/80 bg-white" aria-label="Main menu">
       <div class="mx-auto max-w-6xl px-4 py-2">
-        <a href="/tasks" data-nav="/tasks" class="flex items-center min-h-[44px] rounded-lg px-3 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900">Tasks</a>
-        <a href="/db-viewer" data-nav="/db-viewer" class="flex items-center min-h-[44px] rounded-lg px-3 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100 hover:text-slate-900">DB Viewer</a>
+        ${mobileNavLinks}
         ${showLogout ? `
         <div class="border-t border-slate-100 mt-2 pt-2">
           <form method="POST" action="/auth/logout" onsubmit="return confirm('Are you sure you want to logout?');">

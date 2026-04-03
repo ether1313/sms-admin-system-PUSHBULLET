@@ -27,7 +27,7 @@ router.post('/login', async (req: Request, res: Response) => {
     const prisma = req.app.locals.prisma;
     const admin = await prisma.admin.findUnique({
       where: { username },
-      select: { id: true, password: true, companyId: true },
+      select: { id: true, password: true, companyId: true, role: true },
     });
 
     if (!admin) {
@@ -45,6 +45,7 @@ router.post('/login', async (req: Request, res: Response) => {
     // Set adminId in session
     req.session.adminId = admin.id;
     req.session.companyId = admin.companyId;
+    req.session.role = admin.role;
 
     // Set signed cookie with adminId so auth works even if session store is lost (e.g. restart, multi-instance)
     const cookieOpts = {

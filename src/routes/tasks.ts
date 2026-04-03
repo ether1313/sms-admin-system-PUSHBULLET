@@ -10,8 +10,12 @@ import { executionEngine } from '../services/executionEngine'
 
 const router = express.Router()
 
-// 🔐 auth
 router.use(requireAuth)
+
+router.use((req: AuthRequest, res, next) => {
+  if (req.session?.role === 'superadmin') return res.redirect('/db-viewer')
+  next()
+})
 
 function parseUniqueTemplates(primaryMessage: string, messageVariantsRaw: unknown): string[] {
   const messageVariantsList = Array.isArray(messageVariantsRaw)

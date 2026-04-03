@@ -25,6 +25,7 @@ model Admin {
   id             String          @id @default(cuid())
   username       String          @unique
   password       String
+  role           String          @default("admin")
   companyId      String          @unique
   company        Company         @relation(fields: [companyId], references: [id], onDelete: Restrict)
   createdAt      DateTime        @default(now())
