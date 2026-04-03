@@ -25,8 +25,8 @@ const SMS_DELAY_JITTER_MS = parseInt(process.env.SMS_DELAY_JITTER_MS || '2000', 
 const SMS_MAX_RETRIES = parseInt(process.env.SMS_MAX_RETRIES || '2', 10);
 const SMS_RATE_LIMIT_PER_MINUTE = parseInt(process.env.SMS_RATE_LIMIT_PER_MINUTE || '10', 10);
 const SMS_RATE_LIMIT_WINDOW_MS = 60 * 1000;
-// 同步波次并发：每台机器每波固定 1 条、波次间统一等待区间（4-5分钟）
-const SMS_SYNC_WAVE_PAUSE_MIN_MS = parseInt(process.env.SMS_SYNC_WAVE_PAUSE_MIN_MS || '240000', 10);
+// 同步波次并发：每台机器每波固定 1 条、波次间统一等待区间（2-5分钟随机）
+const SMS_SYNC_WAVE_PAUSE_MIN_MS = parseInt(process.env.SMS_SYNC_WAVE_PAUSE_MIN_MS || '120000', 10);
 const SMS_SYNC_WAVE_PAUSE_MAX_MS = parseInt(process.env.SMS_SYNC_WAVE_PAUSE_MAX_MS || '300000', 10);
 
 interface TaskRiskProfile {
@@ -34,10 +34,6 @@ interface TaskRiskProfile {
   delayMs: number;
   jitterMs: number;
   maxRetries: number;
-  waveBatchMin: number;
-  waveBatchMax: number;
-  wavePauseMinMs: number;
-  wavePauseMaxMs: number;
   tier: 'tiny' | 'small' | 'medium' | 'large' | 'xl';
 }
 
@@ -513,10 +509,6 @@ class ExecutionEngine {
         delayMs: 4500,
         jitterMs: 800,
         maxRetries: 2,
-        waveBatchMin: 120,
-        waveBatchMax: 200,
-        wavePauseMinMs: 0,
-        wavePauseMaxMs: 0,
         tier: 'tiny',
       });
     }
@@ -528,10 +520,6 @@ class ExecutionEngine {
         delayMs: 5500,
         jitterMs: 1000,
         maxRetries: 2,
-        waveBatchMin: 100,
-        waveBatchMax: 160,
-        wavePauseMinMs: 0,
-        wavePauseMaxMs: 0,
         tier: 'small',
       });
     }
@@ -543,10 +531,6 @@ class ExecutionEngine {
         delayMs: 6500,
         jitterMs: 1200,
         maxRetries: 1,
-        waveBatchMin: 70,
-        waveBatchMax: 70,
-        wavePauseMinMs: 90 * 1000,
-        wavePauseMaxMs: 150 * 1000,
         tier: 'medium',
       });
     }
@@ -558,10 +542,6 @@ class ExecutionEngine {
         delayMs: 8000,
         jitterMs: 1500,
         maxRetries: 1,
-        waveBatchMin: 55,
-        waveBatchMax: 55,
-        wavePauseMinMs: 120 * 1000,
-        wavePauseMaxMs: 180 * 1000,
         tier: 'large',
       });
     }
@@ -573,10 +553,6 @@ class ExecutionEngine {
         delayMs: 9000,
         jitterMs: 1800,
         maxRetries: 1,
-        waveBatchMin: 45,
-        waveBatchMax: 45,
-        wavePauseMinMs: 150 * 1000,
-        wavePauseMaxMs: 240 * 1000,
         tier: 'xl',
       });
     }
@@ -587,10 +563,6 @@ class ExecutionEngine {
       delayMs: 9500,
       jitterMs: 2000,
       maxRetries: 1,
-      waveBatchMin: 30,
-      waveBatchMax: 50,
-      wavePauseMinMs: 120 * 1000,
-      wavePauseMaxMs: 300 * 1000,
       tier: 'xl',
     });
   }

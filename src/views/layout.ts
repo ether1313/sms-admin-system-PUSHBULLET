@@ -53,7 +53,7 @@ export function renderLayout(title: string, content: string, showLogout = true):
         </div>
         ${showLogout ? `
         <form method="POST" action="/auth/logout" class="shrink-0" onsubmit="return confirm('Are you sure you want to logout?');">
-          <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:from-red-600 hover:to-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2">Logout <span aria-hidden="true">🏠</span></button>
+          <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-red-500 to-rose-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:from-red-600 hover:to-rose-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2">Logout <span aria-hidden="true">➜]</span></button>
         </form>
         ` : '<span class="shrink-0"></span>'}
       </div>
@@ -82,7 +82,7 @@ export function renderLayout(title: string, content: string, showLogout = true):
         ${showLogout ? `
         <div class="border-t border-slate-100 mt-2 pt-2">
           <form method="POST" action="/auth/logout" onsubmit="return confirm('Are you sure you want to logout?');">
-            <button type="submit" class="flex w-full items-center justify-center gap-2 min-h-[44px] rounded-xl bg-gradient-to-r from-red-500 to-rose-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:from-red-600 hover:to-rose-700">Logout <span aria-hidden="true">🏠</span></button>
+            <button type="submit" class="flex w-full items-center justify-center gap-2 min-h-[44px] rounded-xl bg-gradient-to-r from-red-500 to-rose-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:from-red-600 hover:to-rose-700">Logout <span aria-hidden="true">➜]</span></button>
           </form>
         </div>
         ` : ''}
