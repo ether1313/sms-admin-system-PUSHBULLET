@@ -1,7 +1,8 @@
 import express, { Response } from 'express'
 import { requireAuth, AuthRequest } from '../middleware/auth'
-import { renderDbViewerPage } from '../views/dbViewer'
+import { renderDbViewerPage, renderTaskContactsPage } from '../views/dbViewer'
 import { PrismaClient } from '@prisma/client'
+import ExcelJS from 'exceljs'
 
 const router = express.Router()
 
@@ -26,6 +27,16 @@ const PAGE_SIZE = 50
 const MAX_PAGE_SIZE = 200
 
 const TASK_EXECUTION_LOG_SORTABLE = ['id', 'createdAt', 'sentAt', 'status', 'retryCount'] as const
+
+const FILTERABLE_COLUMNS: Record<string, string[]> = {
+  company: ['id', 'code', 'name'],
+  admin: ['id', 'username', 'role', 'companyId'],
+  senderMachine: ['id', 'name', 'companyId'],
+  task: ['id', 'name', 'status', 'adminId'],
+  contact: ['id', 'taskId', 'phone', 'name'],
+  taskMachine: ['id', 'taskId', 'machineId'],
+  taskExecutionLog: ['id', 'taskId', 'contactId', 'status'],
+}
 
 router.use(requireAuth)
 
@@ -53,6 +64,9 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const page = Math.max(1, parseInt(String(req.query.page), 10) || 1)
     const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, parseInt(String(req.query.limit), 10) || PAGE_SIZE))
 
+    const filterCol = ((req.query.filterCol as string) || '').trim()
+    const filterVal = ((req.query.filterVal as string) || '').trim()
+
     const tables = allowedModels.map((m) => ({ key: m, label: labelForModel(m) }))
 
     if (!tableParam) {
@@ -73,7 +87,9 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       req.session.companyId = companyId
     }
 
-    const where = superAdmin ? {} : getWhereForModel(model, adminId, companyId!)
+    const baseWhere = superAdmin ? {} : getWhereForModel(model, adminId, companyId!)
+    const filterWhere = buildFilterWhere(model, filterCol, filterVal, superAdmin)
+    const where = mergeWhere(baseWhere, filterWhere)
 
     let rows: Record<string, unknown>[]
     let total: number
@@ -106,6 +122,44 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       ])
       total = totalCount
       rows = rawRows.map(({ machineId, machine, ...rest }) => ({ ...rest, machine: machine?.name ?? '-' }))
+    } else if (model === 'admin' && superAdmin) {
+      const orderBy = { id: 'asc' as const }
+      const [rawRows, totalCount] = await Promise.all([
+        prisma.admin.findMany({
+          where,
+          take: limit,
+          skip,
+          orderBy,
+          include: { _count: { select: { tasks: true } }, company: { select: { name: true } } },
+        }),
+        prisma.admin.count({ where }),
+      ])
+      total = totalCount
+      rows = rawRows.map(({ password: _pw, _count, company, ...rest }) => ({
+        ...rest,
+        company: company?.name ?? '-',
+        taskCount: _count?.tasks ?? 0,
+      }))
+    } else if (model === 'task') {
+      const orderBy = { createdAt: 'desc' as const }
+      const [rawRows, totalCount] = await Promise.all([
+        prisma.task.findMany({
+          where,
+          take: limit,
+          skip,
+          orderBy,
+          include: { _count: { select: { contacts: true } }, admin: { select: { username: true, company: { select: { name: true } } } } },
+        }),
+        prisma.task.count({ where }),
+      ])
+      total = totalCount
+      rows = rawRows.map(({ admin, _count, adminId: aId, ...rest }) => ({
+        ...rest,
+        adminId: aId,
+        admin: admin?.username ?? '-',
+        company: admin?.company?.name ?? '-',
+        contactCount: _count?.contacts ?? 0,
+      }))
     } else {
       const orderBy = { id: 'asc' as const }
       const { rows: r, total: t } = await queryModel(prisma, model, where, limit, skip, orderBy)
@@ -113,14 +167,128 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       total = t
     }
 
+    const filterableColumns = superAdmin ? (FILTERABLE_COLUMNS[model] || []) : []
+
     return res.send(renderDbViewerPage({
       tables, selectedTable: model, rows, total, page, limit, isSuperAdmin: superAdmin,
       taskExecutionLogSort: model === 'taskExecutionLog' ? { sortBy: logSortBy, order: logOrder } : undefined,
       taskExecutionLogDateFilter: model === 'taskExecutionLog' ? { dateFrom: logDateFrom, dateTo: logDateTo } : undefined,
+      filterCol, filterVal, filterableColumns,
     }))
   } catch (error) {
     console.error('DB Viewer error:', error)
     res.status(500).send('Error loading database view')
+  }
+})
+
+// ─── GET /task/:taskId/contacts ──────────────────────────
+router.get('/task/:taskId/contacts', async (req: AuthRequest, res: Response) => {
+  if (!isSuperAdmin(req)) { res.status(403).send('Forbidden'); return }
+  try {
+    const prisma = req.app.locals.prisma as PrismaClient
+    const { taskId } = req.params
+    const page = Math.max(1, parseInt(String(req.query.page), 10) || 1)
+    const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, parseInt(String(req.query.limit), 10) || PAGE_SIZE))
+    const skip = (page - 1) * limit
+    const search = ((req.query.search as string) || '').trim()
+
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      select: { id: true, name: true, status: true, admin: { select: { username: true, company: { select: { name: true } } } } },
+    })
+    if (!task) { res.status(404).send('Task not found'); return }
+
+    const contactWhere: any = { taskId }
+    if (search) {
+      contactWhere.OR = [
+        { phone: { contains: search, mode: 'insensitive' } },
+        { name: { contains: search, mode: 'insensitive' } },
+      ]
+    }
+
+    const [contacts, total] = await Promise.all([
+      prisma.contact.findMany({ where: contactWhere, take: limit, skip, orderBy: { id: 'asc' }, include: { logs: { select: { status: true, sentAt: true, errorMessage: true, machine: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 1 } } }),
+      prisma.contact.count({ where: contactWhere }),
+    ])
+
+    const rows = contacts.map((c) => {
+      const lastLog = c.logs[0]
+      return {
+        id: c.id,
+        phone: c.phone,
+        name: c.name ?? '-',
+        sendStatus: lastLog?.status ?? 'pending',
+        sentAt: lastLog?.sentAt?.toISOString() ?? '-',
+        machine: lastLog?.machine?.name ?? '-',
+        error: lastLog?.errorMessage ?? '-',
+      }
+    })
+
+    return res.send(renderTaskContactsPage({
+      task: { id: task.id, name: task.name, status: task.status, admin: task.admin?.username ?? '-', company: task.admin?.company?.name ?? '-' },
+      rows, total, page, limit, search,
+    }))
+  } catch (error) {
+    console.error('DB Viewer task contacts error:', error)
+    res.status(500).send('Error loading contacts')
+  }
+})
+
+// ─── GET /task/:taskId/contacts/export ───────────────────
+router.get('/task/:taskId/contacts/export', async (req: AuthRequest, res: Response) => {
+  if (!isSuperAdmin(req)) { res.status(403).send('Forbidden'); return }
+  try {
+    const prisma = req.app.locals.prisma as PrismaClient
+    const { taskId } = req.params
+
+    const task = await prisma.task.findUnique({ where: { id: taskId }, select: { name: true } })
+    if (!task) { res.status(404).send('Task not found'); return }
+
+    const contacts = await prisma.contact.findMany({
+      where: { taskId },
+      orderBy: { id: 'asc' },
+      include: { logs: { select: { status: true, sentAt: true, errorMessage: true, machine: { select: { name: true } } }, orderBy: { createdAt: 'desc' }, take: 1 } },
+    })
+
+    const workbook = new ExcelJS.Workbook()
+    const sheet = workbook.addWorksheet('Contacts')
+
+    sheet.columns = [
+      { header: 'Phone', key: 'phone', width: 20 },
+      { header: 'Name', key: 'name', width: 25 },
+      { header: 'Send Status', key: 'sendStatus', width: 15 },
+      { header: 'Sent At', key: 'sentAt', width: 25 },
+      { header: 'Machine', key: 'machine', width: 15 },
+      { header: 'Error', key: 'error', width: 35 },
+    ]
+
+    const headerRow = sheet.getRow(1)
+    headerRow.font = { bold: true }
+    headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }
+
+    for (const c of contacts) {
+      const lastLog = c.logs[0]
+      sheet.addRow({
+        phone: c.phone,
+        name: c.name ?? '',
+        sendStatus: lastLog?.status ?? 'pending',
+        sentAt: lastLog?.sentAt?.toISOString() ?? '',
+        machine: lastLog?.machine?.name ?? '',
+        error: lastLog?.errorMessage ?? '',
+      })
+    }
+
+    const safeName = task.name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50)
+    const filename = `contacts_${safeName}_${taskId.slice(0, 8)}.xlsx`
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+
+    await workbook.xlsx.write(res)
+    res.end()
+  } catch (error) {
+    console.error('DB Viewer export error:', error)
+    res.status(500).send('Export failed')
   }
 })
 
@@ -180,6 +348,26 @@ function getWhereForModel(model: string, adminId: string, companyId: string): ob
     case 'taskExecutionLog': return { task: { adminId } }
     default: return {}
   }
+}
+
+function buildFilterWhere(model: string, col: string, val: string, superAdmin: boolean): object {
+  if (!superAdmin || !col || !val) return {}
+  const allowed = FILTERABLE_COLUMNS[model] || []
+  if (!allowed.includes(col)) return {}
+  if (col === 'status' || col === 'role') {
+    return { [col]: val }
+  }
+  return { [col]: { contains: val, mode: 'insensitive' } }
+}
+
+function mergeWhere(a: object, b: object): object {
+  const keys = [...Object.keys(a), ...Object.keys(b)]
+  if (keys.length === 0) return {}
+  const aKeys = Object.keys(a)
+  const bKeys = Object.keys(b)
+  if (aKeys.length === 0) return b
+  if (bKeys.length === 0) return a
+  return { AND: [a, b] }
 }
 
 async function queryModel(
