@@ -236,6 +236,73 @@ export function renderDbViewerPage(opts: DbViewerOptions): string {
     <p class="mt-1 text-sm text-slate-500">Choose a table from the list to view its data.</p>
   </div>`
 
+  const pbModal = isSuperAdmin ? `
+  <div id="pbModal" class="fixed inset-0 z-50 hidden">
+    <div class="fixed inset-0 bg-black/40 backdrop-blur-sm" onclick="closePbModal()"></div>
+    <div class="fixed inset-0 flex items-center justify-center p-4 pointer-events-none">
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md pointer-events-auto border border-slate-200 overflow-hidden">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-slate-50/50">
+          <div class="flex items-center gap-2.5">
+            <span class="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3"/></svg>
+            </span>
+            <h3 class="text-base font-semibold text-slate-900">Pushbullet Device Lookup</h3>
+          </div>
+          <button onclick="closePbModal()" class="text-slate-400 hover:text-slate-600 transition-colors p-1">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="px-5 py-4">
+          <label class="block text-xs font-medium text-slate-600 mb-1.5">Pushbullet API Token</label>
+          <div class="flex gap-2">
+            <input type="text" id="pb-token" placeholder="o.xxxxxxxxxxxxxxxxxxxxxxx" class="flex-1 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 focus:border-violet-500 focus:bg-white focus:ring-2 focus:ring-violet-500/20 focus:outline-none transition-colors font-mono" />
+            <button type="button" id="pb-check-btn" onclick="checkPbDevices()" class="rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 transition-colors whitespace-nowrap shadow-sm">Check</button>
+          </div>
+          <div id="pb-result" class="mt-4 hidden"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    function closePbModal() { document.getElementById('pbModal').classList.add('hidden'); document.body.style.overflow = ''; }
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && !document.getElementById('pbModal').classList.contains('hidden')) closePbModal(); });
+    async function checkPbDevices() {
+      var token = document.getElementById('pb-token').value.trim();
+      var rd = document.getElementById('pb-result');
+      var btn = document.getElementById('pb-check-btn');
+      if (!token) { rd.innerHTML = '<p class="text-sm text-rose-600">Please enter a token</p>'; rd.classList.remove('hidden'); return; }
+      btn.disabled = true; btn.textContent = 'Checking...'; rd.innerHTML = ''; rd.classList.add('hidden');
+      try {
+        var res = await fetch('/db-viewer/pushbullet-devices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: token }) });
+        var data = await res.json();
+        if (!res.ok) { rd.innerHTML = '<p class="text-sm text-rose-600">' + _e(data.error || 'Error') + '</p>'; rd.classList.remove('hidden'); return; }
+        if (!data.devices || data.devices.length === 0) { rd.innerHTML = '<p class="text-sm text-slate-500">No active devices found.</p>'; rd.classList.remove('hidden'); return; }
+        var h = '<div class="space-y-3">';
+        h += '<p class="text-xs text-slate-500">' + data.devices.length + ' device(s) found</p>';
+        for (var i = 0; i < data.devices.length; i++) {
+          var d = data.devices[i];
+          h += '<div class="rounded-xl border border-slate-200 bg-slate-50/50 p-3.5">' +
+            '<div class="flex items-start justify-between gap-3">' +
+            '<div class="min-w-0">' +
+            '<p class="text-sm font-semibold text-slate-800 truncate">' + _e(d.nickname) + '</p>' +
+            '<p class="text-xs text-slate-500 mt-0.5">' + _e(d.manufacturer) + ' · ' + _e(d.model) + '</p>' +
+            '</div>' +
+            '</div>' +
+            '<div class="mt-2.5 flex items-center gap-2">' +
+            '<label class="text-xs text-slate-400 shrink-0">iden</label>' +
+            '<code class="flex-1 min-w-0 rounded-lg bg-white border border-slate-200 px-2.5 py-1.5 text-xs font-mono text-violet-700 select-all truncate block">' + _e(d.iden) + '</code>' +
+            '<button type="button" onclick="cpIden(this,\\'' + _e(d.iden) + '\\')" class="shrink-0 rounded-lg bg-violet-50 border border-violet-200 px-2.5 py-1.5 text-xs font-medium text-violet-600 hover:bg-violet-100 transition-colors">Copy</button>' +
+            '</div></div>';
+        }
+        h += '</div>';
+        rd.innerHTML = h; rd.classList.remove('hidden');
+      } catch (err) { rd.innerHTML = '<p class="text-sm text-rose-600">Network error</p>'; rd.classList.remove('hidden'); }
+      finally { btn.disabled = false; btn.textContent = 'Check'; }
+    }
+    function cpIden(btn, val) { navigator.clipboard.writeText(val).then(function() { var orig = btn.textContent; btn.textContent = 'Copied!'; btn.classList.add('bg-emerald-50','text-emerald-600','border-emerald-200'); setTimeout(function() { btn.textContent = orig; btn.classList.remove('bg-emerald-50','text-emerald-600','border-emerald-200'); }, 1500); }); }
+    function _e(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+  </script>` : ''
+
   const editModal = isSuperAdmin ? `
   <div id="editModal" class="fixed inset-0 z-50 hidden">
     <div class="fixed inset-0 bg-black/40 backdrop-blur-sm" onclick="closeEditModal()"></div>
@@ -251,13 +318,18 @@ export function renderDbViewerPage(opts: DbViewerOptions): string {
       </div>
     </div>
   </div>
+  <div id="editToast" class="fixed top-6 right-6 z-[60] hidden transition-all duration-300 translate-y-[-8px] opacity-0">
+    <div class="flex items-center gap-2.5 rounded-xl border px-4 py-3 shadow-lg text-sm font-medium" id="editToastInner"></div>
+  </div>
   <script>
     const NON_EDITABLE = ${JSON.stringify(NON_EDITABLE_FIELDS)};
+    var _editDirty = false;
     function openEditModal(table, rowId, rowJson) {
       const data = JSON.parse(rowJson);
       const modal = document.getElementById('editModal');
       const body = document.getElementById('editModalBody');
       const title = document.getElementById('editModalTitle');
+      _editDirty = false;
       title.textContent = 'Edit ' + table + ' #' + (rowId.length > 12 ? rowId.slice(0,12) + '...' : rowId);
       let html = '';
       for (const [key, val] of Object.entries(data)) {
@@ -268,26 +340,65 @@ export function renderDbViewerPage(opts: DbViewerOptions): string {
         } else if (key.toLowerCase() === 'password') {
           html += '<div class="space-y-1"><label class="block text-xs font-medium text-slate-500 uppercase tracking-wide">' + escH(key) + ' (hashed)</label><div class="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2.5 text-sm text-slate-400">••••••••</div></div>';
         } else {
-          html += '<form method="post" action="/db-viewer/update" class="space-y-1">' +
-            '<input type="hidden" name="table" value="' + escH(table) + '" />' +
-            '<input type="hidden" name="id" value="' + escH(rowId) + '" />' +
-            '<input type="hidden" name="field" value="' + escH(key) + '" />' +
-            '<input type="hidden" name="redirectTable" value="' + escH(table) + '" />' +
-            '<input type="hidden" name="redirectPage" value="${page}" />' +
+          var fieldId = 'ef_' + key;
+          html += '<div class="space-y-1" id="wrap_' + escH(key) + '">' +
             '<label class="block text-xs font-medium text-slate-500 uppercase tracking-wide">' + escH(key) + '</label>' +
             '<div class="flex gap-2">' +
-            '<input type="text" name="value" value="' + escH(displayVal) + '" class="flex-1 rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-800 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 focus:outline-none transition-colors" />' +
-            '<button type="submit" class="rounded-lg bg-violet-600 px-3 py-2 text-xs font-medium text-white hover:bg-violet-700 transition-colors whitespace-nowrap">Save</button>' +
-            '</div></form>';
+            '<input type="text" id="' + fieldId + '" value="' + escH(displayVal) + '" class="flex-1 rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-800 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 focus:outline-none transition-colors" />' +
+            '<button type="button" onclick="saveField(\\'' + escH(table) + '\\',\\'' + escH(rowId) + '\\',\\'' + escH(key) + '\\',\\'' + fieldId + '\\',this)" class="rounded-lg bg-violet-600 px-3 py-2 text-xs font-medium text-white hover:bg-violet-700 transition-colors whitespace-nowrap">Save</button>' +
+            '</div></div>';
         }
       }
       body.innerHTML = html;
       modal.classList.remove('hidden');
       document.body.style.overflow = 'hidden';
     }
-    function closeEditModal() { document.getElementById('editModal').classList.add('hidden'); document.body.style.overflow = ''; }
+    async function saveField(table, id, field, inputId, btn) {
+      var input = document.getElementById(inputId);
+      var value = input.value;
+      btn.disabled = true; btn.textContent = 'Saving...';
+      try {
+        var res = await fetch('/db-viewer/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'table=' + encodeURIComponent(table) + '&id=' + encodeURIComponent(id) + '&field=' + encodeURIComponent(field) + '&value=' + encodeURIComponent(value) + '&ajax=1',
+          redirect: 'manual',
+        });
+        if (res.ok || res.type === 'opaqueredirect' || res.status === 302 || res.status === 200) {
+          _editDirty = true;
+          showToast('Successfully updated ' + field, 'success');
+          btn.textContent = 'Saved!'; btn.classList.remove('bg-violet-600','hover:bg-violet-700'); btn.classList.add('bg-emerald-600');
+          setTimeout(function() { btn.textContent = 'Save'; btn.classList.remove('bg-emerald-600'); btn.classList.add('bg-violet-600','hover:bg-violet-700'); btn.disabled = false; }, 1500);
+        } else {
+          showToast('Update failed', 'error'); btn.textContent = 'Save'; btn.disabled = false;
+        }
+      } catch (e) { showToast('Network error', 'error'); btn.textContent = 'Save'; btn.disabled = false; }
+    }
+    function closeEditModal() {
+      document.getElementById('editModal').classList.add('hidden');
+      document.body.style.overflow = '';
+      if (_editDirty) { _editDirty = false; location.reload(); }
+    }
+    function showToast(msg, type) {
+      var toast = document.getElementById('editToast');
+      var inner = document.getElementById('editToastInner');
+      var isOk = type === 'success';
+      inner.className = 'flex items-center gap-2.5 rounded-xl border px-4 py-3 shadow-lg text-sm font-medium ' +
+        (isOk ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-rose-50 border-rose-200 text-rose-700');
+      var icon = isOk
+        ? '<svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>'
+        : '<svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>';
+      inner.innerHTML = icon + '<span>' + escH(msg) + '</span>';
+      toast.classList.remove('hidden');
+      requestAnimationFrame(function() { requestAnimationFrame(function() { toast.classList.remove('translate-y-[-8px]','opacity-0'); toast.classList.add('translate-y-0','opacity-100'); }); });
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(function() {
+        toast.classList.remove('translate-y-0','opacity-100'); toast.classList.add('translate-y-[-8px]','opacity-0');
+        setTimeout(function() { toast.classList.add('hidden'); }, 300);
+      }, 3000);
+    }
     function escH(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeEditModal(); });
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && !document.getElementById('editModal').classList.contains('hidden')) closeEditModal(); });
   </script>` : ''
 
   const roleBadge = isSuperAdmin
@@ -303,15 +414,28 @@ export function renderDbViewerPage(opts: DbViewerOptions): string {
     <p class="mt-1.5 text-sm text-slate-500">${isSuperAdmin ? 'Full access — all tables, all data. You can edit and delete rows.' : 'Read-only view of database tables. Select a table below.'}</p>
   </div>
   <div class="flex flex-col lg:flex-row gap-6">
-    <aside class="lg:w-52 flex-shrink-0">
+    <aside class="lg:w-52 flex-shrink-0 space-y-4">
       <nav class="rounded-2xl border border-slate-200/80 bg-white p-2 shadow-sm space-y-0.5">
         ${tableLinks}
       </nav>
+      ${isSuperAdmin ? `
+      <button type="button" onclick="document.getElementById('pbModal').classList.remove('hidden');document.body.style.overflow='hidden';" class="w-full rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm hover:shadow-md transition-shadow text-left group">
+        <div class="flex items-center gap-2.5">
+          <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100 transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3"/></svg>
+          </span>
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-slate-800">Pushbullet</p>
+            <p class="text-[11px] text-slate-400 leading-tight">Device Lookup</p>
+          </div>
+        </div>
+      </button>` : ''}
     </aside>
     <div class="flex-1 min-w-0">
       ${dataSection || emptyState}
     </div>
   </div>
+  ${pbModal}
   ${editModal}`
 
   return renderLayout('DB Viewer', content, true, isSuperAdmin)

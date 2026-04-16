@@ -292,6 +292,32 @@ router.get('/task/:taskId/contacts/export', async (req: AuthRequest, res: Respon
   }
 })
 
+// ─── POST /pushbullet-devices (superadmin only) ─────────
+router.post('/pushbullet-devices', async (req: AuthRequest, res: Response) => {
+  if (!isSuperAdmin(req)) { res.status(403).send('Forbidden'); return }
+  const token = ((req.body.token as string) || '').trim()
+  if (!token) { res.status(400).send('Missing API token'); return }
+
+  try {
+    const resp = await fetch('https://api.pushbullet.com/v2/devices', {
+      headers: { 'Access-Token': token },
+    })
+    if (!resp.ok) {
+      const text = await resp.text()
+      res.status(resp.status).json({ error: `Pushbullet API error: ${resp.status}`, detail: text })
+      return
+    }
+    const data = await resp.json() as { devices?: { iden: string; nickname?: string; model?: string; active?: boolean; manufacturer?: string }[] }
+    const devices = (data.devices || [])
+      .filter((d) => d.active !== false)
+      .map((d) => ({ iden: d.iden, nickname: d.nickname || '-', model: d.model || '-', manufacturer: d.manufacturer || '-' }))
+    res.json({ devices })
+  } catch (error) {
+    console.error('Pushbullet API error:', error)
+    res.status(500).json({ error: 'Failed to fetch devices' })
+  }
+})
+
 // ─── POST /update (superadmin only) ──────────────────────
 router.post('/update', async (req: AuthRequest, res: Response) => {
   if (!isSuperAdmin(req)) { res.status(403).send('Forbidden'); return }
@@ -306,12 +332,21 @@ router.post('/update', async (req: AuthRequest, res: Response) => {
     if (!delegate) { res.status(400).send('Invalid table'); return }
 
     await delegate.update({ where: { id }, data: { [field]: value } })
-    const redirectTable = req.body.redirectTable || table
-    const redirectPage = req.body.redirectPage || '1'
-    res.redirect(`/db-viewer?table=${encodeURIComponent(redirectTable)}&page=${redirectPage}`)
+
+    if (req.body.ajax === '1') {
+      res.json({ ok: true })
+    } else {
+      const redirectTable = req.body.redirectTable || table
+      const redirectPage = req.body.redirectPage || '1'
+      res.redirect(`/db-viewer?table=${encodeURIComponent(redirectTable)}&page=${redirectPage}`)
+    }
   } catch (error) {
     console.error('DB Viewer update error:', error)
-    res.status(500).send('Update failed')
+    if (req.body.ajax === '1') {
+      res.status(500).json({ ok: false, error: 'Update failed' })
+    } else {
+      res.status(500).send('Update failed')
+    }
   }
 })
 
